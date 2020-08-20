@@ -136,7 +136,6 @@ class ProxyServer:
 			file.write(f'{msg}\n')
 			file.close()
 
-
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--lhost","-LH",help="IP of local server",type=str)
