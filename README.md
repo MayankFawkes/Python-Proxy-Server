@@ -1,9 +1,19 @@
 # Python-Proxy-Server
-it use all python official lib so no need to install anything just python3
+Single file http proxy server support HTTP/1.0 and HTTP/1.1
+
+# Support
+Service  | Yes or No
+------------ | -------------
+http | yes
+https | yes
+ws | yes
+wss | yes
+ftp | yes
+ssh | yes
 
 # Help
 ```
-usage: serv.py [-h] [--lhost LHOST] [--lport LPORT] [--rhost RHOST]
+usage: Server.py [-h] [--lhost LHOST] [--lport LPORT] [--rhost RHOST]
                [--rport RPORT]
 
 optional arguments:
@@ -17,5 +27,5 @@ optional arguments:
   --rport RPORT, -RP RPORT
                         PORT of remote server
 ```
-# Notice
-This is just a sample project and i will be not responsible for any of your actions.
+# Support
+Please email me if you found any bug or errors in the program or for suggestion, script tested on windows 10 with python3.7.7
