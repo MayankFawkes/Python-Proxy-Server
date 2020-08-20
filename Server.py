@@ -1,116 +1,153 @@
 import os,sys,socket
 import threading,ssl
-import select
-import json
+import select, json
+from datetime import datetime
+import argparse
 
-BACKLOG = 50
-BLOCKED = []
+class ProxyServer:
+	BACKLOG = 50
+	BLOCKED = [""]
+	auth=b"HTTP/1.1 200 Connection Established\r\n\r\n"
+	block_response = b'HTTP/1.1 200 OK\r\nPragma: no-cache\r\nCache-Control: no-cache\r\nContent-Type: text/html\r\nDate: Sat, 15 Feb 2020 07:04:42 GMT\r\nConnection: close\r\n\r\n<html><head><title>ISP ERROR</title></head><body><p style="text-align: center;">&nbsp;</p><p style="text-align: center;">&nbsp;</p><p style="text-align: center;">&nbsp;</p><p style="text-align: center;">&nbsp;</p><p style="text-align: center;">&nbsp;</p><p style="text-align: center;">&nbsp;</p><p style="text-align: center;"><span><strong>**YOU ARE NOT AUTHORIZED TO ACCESS THIS WEB PAGE | YOUR PROXY SERVER HAS BLOCKED THIS DOMAIN**</strong></span></p><p style="text-align: center;"><span><strong>**CONTACT YOUR PROXY ADMINISTRATOR**</strong></span></p></body></html>'
+	http_requests=["get","head","post","put","delete","connect","options","trace","patch"]
+	def __init__(self,addr:dict,proxy:dict=None,debug=False):
+		self.host=addr["host"]
+		self.port=addr["port"]
+		self.proxy=proxy
+		self.debug=debug
+		if self.debug:self.log(f"[{self._get_time()}] Proxy Server Running on {self.host}:{self.port}")
+		print(f"[{self._get_time()}] Proxy Server Running on {self.host}:{self.port}")
+		try:
+			self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			self.sock.bind((self.host, self.port))
+			self.sock.listen(self.BACKLOG)
+		except socket.error as message:
+			if self.debug:self.log(f"Could not open socket: {message}")
+			print(f"Could not open socket: {message}")
+			sys.exit(1)
+	@staticmethod
+	def printout(type,request,address):
+		print(address[0],"\t",type,"\t",b" ".join(request))
+	@staticmethod
+	def _get_time():
+		dt = datetime.now().strftime("%I:%M:%S %p")
+		return dt
+	def process(self,conn, client_addr):
+		rawreq = conn.recv(2048)
+		if rawreq:
+			header=self._requests_header(head=rawreq,client_addr=client_addr)
+			if header["DOMAIN"] not in self.BLOCKED:
+				if header["REQUESTS_TYPE"].lower() in ["connect"]:
+					self._action(conn=conn,host=header["DOMAIN"],port=header["PORT"],data=rawreq)
+				else:
+					self._action(conn=conn,host=header["DOMAIN"],data=rawreq)
+			else:
+				conn.send(self.block_response)
+				conn.close()
+				if self.debug:self.log(f'[{self._get_time()}] Domain is blocked By ProxyServer')
+	def _action(self,conn:object,host:str,port:int=80,data:bytes=b"",timeout=3):
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		try:
+			if self.proxy:
+				s.connect((self.proxy["host"],self.proxy["port"]))
+				s.send(data)
+			else:
+				s.connect((host,port))
+				if port is 80:
+					s.send(data)
+				else:
+					conn.send(self.auth)
+		except:
+			if self.debug:self.log(f'[{self._get_time()}] Internet is not connected or domain is invalid')
+			print(f'[{self._get_time()}] Internet is not connected or domain is invalid')
+		while True:
+			try:
+				triple = select.select([conn,s], [], [])[0]
+				if not len(triple): break
+				if conn in triple:
+					data = conn.recv(8192)
+					# print('Client data '+str((data)))
+					if not data: break
+					s.send(data)
+				if s in triple:
+					data = s.recv(8192)
+					# print('Remote data '+str((data)))
+					if not data: break
+					conn.send(data)
+			except:
+				conn.close()
+				s.close()
+	def _requests_header(self,head:bytes,client_addr:tuple,data:dict={}):
+		try:
+			d=head
+			first = d.split(b'\r\n')[0].split(b' ')
+			schemes=False
+			if first[1].find(b"http://") != -1 or first[1].find(b"http://") != -1:
+				schemes=True
+			if schemes:
+				self.printout("Request",first,client_addr)
+				data["REQUESTS_TYPE"] = first[0].decode()
+				data["PROTO"], other= first[1].split(b"://")
+				DOMAIN_PROTO = other.split(b"/")[0]
+				data["LOC_PARAMS"] = "/"+b"/".join(other.split(b"/")[1:]).decode()
+				if DOMAIN_PROTO.find(b":") is not -1:
+					DOMAIN = DOMAIN_PROTO.split(b":")[0].decode()
+					PORT = DOMAIN_PROTO.split(b":")[1].decode()
+				else:
+					DOMAIN = DOMAIN_PROTO.decode()
+					PORT = 80
+				data["DOMAIN"] = DOMAIN
+				data["PORT"] = PORT
+				return data
+			else:
+				self.printout("Request",first,client_addr)
+				data["PORT"] = 443
+				data["REQUESTS_TYPE"] = first[0].decode()
+				DOMAIN_PROTO = first[1].split(b"/")[0]
+				data["DOMAIN"] = DOMAIN_PROTO.decode()
+				data["LOC_PARAMS"] = "/"+b"/".join(first[1].split(b"/")[1:]).decode()
+				if DOMAIN_PROTO.find(b":") is not -1:
+					DOMAIN = DOMAIN_PROTO.split(b":")[0]
+					PORT = DOMAIN_PROTO.split(b":")[1]
+				else:
+					DOMAIN = DOMAIN_PROTO
+					PORT = 80
+				data["DOMAIN"] = DOMAIN.decode()
+				if PORT:data["PORT"] = int(PORT.decode())
+				return data
+		except:
+			self.printout("Error",first,client_addr)
+			print(head)
 
-def main():
-    port = 44444
-    host = ''
-    print("Proxy Server Running on ",host,":",port)
-    try:
-	    if sys.argv[1]:
-	    	proxy=sys.argv[1]
-    except:
-    	proxy=False
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind((host, port))
-        s.listen(BACKLOG)
-    except socket.error:
-        if s:
-            s.close()
-        print("Could not open socket:", message)
-        sys.exit(1)
-    while 1:
-        #print("Accept")
-        conn, client_addr = s.accept()
-        threading.Thread(target=proxy_thread,args=(conn, client_addr,proxy),).start()
-    s.close()
+	def start(self):
+		for n in range(100):
+			conn, client_addr = self.sock.accept()
+			s=threading.Thread(target=self.process,args=(conn, client_addr),)
+			s.start()
+			# s.join()
+		self.sock.close()
+	def __repr__(self):
+		return f'<{self.__class__.__name__}.{self.__class__.__module__} host={self.host}, port={self.port} at {hex(id(self))}>'
+	def __str__(self):
+		return f'<{self.__class__.__name__}.{self.__class__.__module__} host={self.host}, port={self.port} at {hex(id(self))}>'
+	@staticmethod
+	def log(msg):
+		with open("ProxyServer.logs","a") as file:
+			file.write(f'{msg}\n')
+			file.close()
 
-def printout(type,request,address):
-    print(address[0],"\t",type,"\t",request)
 
-def proxy_thread(conn, client_addr,proxy):
-    rawreq = conn.recv(2048)
-    request = rawreq.decode()
-    #print(len(rawreq))
-    #print(len(request))
-    first_line = request.split('\n')[0]
-    url = first_line.split(' ')[1]
-    for i in range(0,len(BLOCKED)):
-        if BLOCKED[i] in url:
-            printout("Blacklisted",first_line,client_addr)
-            conn.close()
-            sys.exit(1)
-    printout("Request",first_line,client_addr)
-    http_pos = url.find("://")
-    if (http_pos==-1):
-        temp = url
-    else:
-        temp = url[(http_pos+3):]
-    port_pos = temp.find(":") 
-    webserver_pos = temp.find("/")
-    if webserver_pos == -1:
-        webserver_pos = len(temp)
-    webserver = ""
-    port = -1
-    if (port_pos==-1 or webserver_pos < port_pos):
-        port = 80
-        webserver = temp[:webserver_pos]
-    else:
-        port = int((temp[(port_pos+1):])[:webserver_pos-port_pos-1])
-        webserver = temp[:port_pos]
-
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #s = ssl.wrap_socket(s,certfile="cert.pem",keyfile="cert.pem",ssl_version=ssl.PROTOCOL_TLSv1)   
-        #print(port)
-        #print(webserver)
-        if proxy:
-        	proxyip=proxy.split(":")[0]
-        	proxyport=proxy.split(":")[1]
-        	s.connect((proxyip, int(proxyport)))
-        else:
-            s.connect((webserver,port))
-        if first_line.find('CONNECT ')!=-1:
-            if proxy:
-                s.send(request.encode())
-            else:
-                conn.send(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-            #print('More data')
-            while True:
-                triple = select.select([conn,s], [], [], 5)[0]
-                if not len(triple): break
-                if conn in triple:
-                    data = conn.recv(2048)
-                    #print('more data'+str(len(data)))
-                    if not data: break
-                    s.send(data)
-                if s in triple:
-                    data = s.recv(2048)
-                    #print('remote data'+str(len(data)))
-                    if not data: break
-                    conn.send(data)
-        else:
-            #print(request.encode())
-            s.send(request.encode())
-            while True:
-                data = s.recv(2048)
-                if not data: break
-                conn.send(data)
-        #print('Recv finished')
-        s.close()
-        conn.close()
-    except socket.error:
-        if s:
-            s.close()
-        if conn:
-            conn.close()
-        printout("Peer Reset",first_line,client_addr)
-        sys.exit(1)
-    
 if __name__ == '__main__':
-    main()
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--lhost","-LH",help="IP of local server",type=str)
+	parser.add_argument("--lport","-LP",help="IP of local server",type=int)
+	parser.add_argument("--rhost","-RH",help="IP of remote server",type=str)
+	parser.add_argument("--rport","-RP",help="PORT of remote server",type=int)
+	args = parser.parse_args()
+	kwargs={"addr":{"host":"0.0.0.0","port":44444},"proxy":{}}
+	if args.lhost:kwargs["addr"]["host"]=args.lhost
+	if args.lport:kwargs["addr"]["port"]=args.lport
+	if args.rhost and args.rport:
+		kwargs["proxy"]["port"]=args.rport
+		kwargs["proxy"]["host"]=args.rhost
+	ProxyServer(**kwargs,debug=False).start()
