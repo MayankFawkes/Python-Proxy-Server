@@ -2,14 +2,15 @@
 Single file http proxy server support HTTP/1.0 and HTTP/1.1
 
 # Support
-Service  | Yes or No
+Service  | Support
 ------------ | -------------
-http | yes
-https | yes
-ws | yes
-wss | yes
-ftp | yes
-ssh | yes
+HTTP | Yes
+HTTPS | Yes
+WS | Yes
+WSS | Yes
+FTP | Yes
+SSH | Yes
+RDP | Yes
 
 # Help
 ```
