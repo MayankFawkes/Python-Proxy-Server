@@ -34,26 +34,30 @@ class ProxyServer:
 		return dt
 	def process(self,conn, client_addr):
 		rawreq = conn.recv(2048)
+		print(client_addr)
+		print(rawreq)
 		if rawreq:
 			header=self._requests_header(head=rawreq,client_addr=client_addr)
 			if header["DOMAIN"] not in self.BLOCKED:
 				if header["REQUESTS_TYPE"].lower() in ["connect"]:
-					self._action(conn=conn,host=header["DOMAIN"],port=header["PORT"],data=rawreq)
+					print(header)
+					self._action(conn=conn,host=header["DOMAIN"],port=header["PORT"],data=rawreq,type="connect")
 				else:
 					self._action(conn=conn,host=header["DOMAIN"],data=rawreq)
 			else:
 				conn.send(self.block_response)
 				conn.close()
 				if self.debug:self.log(f'[{self._get_time()}] Domain is blocked By ProxyServer')
-	def _action(self,conn:object,host:str,port:int=80,data:bytes=b"",timeout=3):
+	def _action(self,conn:object,host:str,port:int=80,data:bytes=b"",type:str=None,timeout=3):
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		try:
 			if self.proxy:
 				s.connect((self.proxy["host"],self.proxy["port"]))
 				s.send(data)
 			else:
+				print(host,port)
 				s.connect((host,port))
-				if port is 80:
+				if not type:
 					s.send(data)
 				else:
 					conn.send(self.auth)
@@ -66,12 +70,12 @@ class ProxyServer:
 				if not len(triple): break
 				if conn in triple:
 					data = conn.recv(8192)
-					# print('Client data '+str((data)))
+					print('Client data '+str((data)))
 					if not data: break
 					s.send(data)
 				if s in triple:
 					data = s.recv(8192)
-					# print('Remote data '+str((data)))
+					print('Remote data '+str((data)))
 					if not data: break
 					conn.send(data)
 			except:
@@ -120,7 +124,7 @@ class ProxyServer:
 			print(head)
 
 	def start(self):
-		for n in range(100):
+		while True:
 			conn, client_addr = self.sock.accept()
 			s=threading.Thread(target=self.process,args=(conn, client_addr),)
 			s.start()
@@ -135,6 +139,7 @@ class ProxyServer:
 		with open("ProxyServer.logs","a") as file:
 			file.write(f'{msg}\n')
 			file.close()
+
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
