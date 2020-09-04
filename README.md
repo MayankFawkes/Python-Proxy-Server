@@ -27,5 +27,10 @@ optional arguments:
   --rport RPORT, -RP RPORT
                         PORT of remote server
 ```
+# Updates
+## Sep 4 2020
+* proxychains support added
+* http/3 and http/2 coming soon
+
 # Support
 Please email me if you found any bug or errors in the program or for suggestion, script tested on windows 10 with python3.7.7
