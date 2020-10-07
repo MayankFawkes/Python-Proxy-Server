@@ -1,5 +1,5 @@
 # Python-Proxy-Server
-Single file http proxy server support HTTP/1.0 and HTTP/1.1 | Proxies (RHOST) may leak your IP in TCP handshaking
+Single file http proxy server support HTTP/1.0 and HTTP/1.1
 
 # Support
 Service  | Support
