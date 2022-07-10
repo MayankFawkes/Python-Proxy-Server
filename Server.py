@@ -11,8 +11,8 @@ logg = logging.getLogger(__name__)
 
 BACKLOG = 50
 MAX_THREADS = 200
-BLACKLISTED = []
-MAX_CHUNK_SIZE = 8192
+BLACKLISTED = ["httpbin.org"]
+MAX_CHUNK_SIZE = 16 * 1024
 
 class StaticResponse:
 	connection_established = b"HTTP/1.1 200 Connection Established\r\n\r\n"
@@ -130,7 +130,7 @@ class ConnectionHandle(threading.Thread):
 		res = None
 
 		while True:
-			triple = select.select([self.client_conn, self.server_conn], [], [], 3)[0]
+			triple = select.select([self.client_conn, self.server_conn], [], [], 60)[0]
 			if not len(triple):
 				break
 			try:
@@ -148,7 +148,7 @@ class ConnectionHandle(threading.Thread):
 						break
 					self.client_conn.send(data)
 			except ConnectionAbortedError:
-				pass
+				break
 
 
 	def __del__(self):
