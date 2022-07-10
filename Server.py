@@ -11,7 +11,7 @@ logg = logging.getLogger(__name__)
 
 BACKLOG = 50
 MAX_THREADS = 200
-BLACKLISTED = ["httpbin.org"]
+BLACKLISTED = []
 MAX_CHUNK_SIZE = 16 * 1024
 
 class StaticResponse:
