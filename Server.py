@@ -6,7 +6,6 @@ import argparse, time, re
 import logging
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(process)s] [%(levelname)s] %(message)s")
-
 logg = logging.getLogger(__name__)
 
 BACKLOG = 50
@@ -20,6 +19,7 @@ class StaticResponse:
 
 class Error:
 	STATUS_503 = "Service Unavailable"
+	STATUS_505 = "HTTP Version Not Supported"
 
 for key in filter(lambda x: x.startswith("STATUS"), dir(Error)):
 	_, code = key.split("_")
@@ -37,6 +37,7 @@ class Method:
 	connect = "CONNECT"
 
 class Protocol:
+	http10 = "HTTP/1.0"
 	http11 = "HTTP/1.1"
 	http20 = "HTTP/2.0"
 
@@ -46,14 +47,11 @@ class Request:
 		self.raw_split = raw.split(b"\r\n")
 		self.log = self.raw_split[0].decode()
 
-		try:
-			self.method, self.path, self.protocol = self.log.split(" ")
-		except Exception as e:
-			self.method, self.path, self.protocol = ("", "", "")
+		self.method, self.path, self.protocol = self.log.split(" ")
 
 		raw_host = re.findall(rb"host: (.*?)\r\n", raw.lower())
 
-		# http protocol 1.1 and above
+		# http protocol 1.1
 		if raw_host:
 			raw_host = raw_host[0].decode()
 			if raw_host.find(":") != -1:
@@ -63,14 +61,27 @@ class Request:
 				self.host = raw_host
 
 		# http protocol 1.0 and below
-		if self.path.find("http://") != -1:
+		if "://" in self.path:
 			path_list = self.path.split("/")
 			if path_list[0] == "http:":
 				self.port = 80
 			if path_list[0] == "https:":
 				self.port = 443
 
-			self.path = f"/{path_list[-1]}"
+			host_n_port = path_list[2].split(":")
+			if len(host_n_port) == 1:
+				self.host = host_n_port[0]
+
+			if len(host_n_port) == 2:
+				self.host, self.port = host_n_port
+				self.port = int(self.port)
+
+			self.path = f"/{'/'.join(path_list[3:])}"
+
+		elif self.path.find(":") != -1:
+			self.host, self.port =  self.path.split(":")
+			self.port = int(self.port)
+
 
 	def header(self):
 		raw_split = self.raw_split[1:]
@@ -106,6 +117,11 @@ class ConnectionHandle(threading.Thread):
 			return
 
 		req = Request(rawreq)
+
+		if req.protocol == Protocol.http20:
+			self.client_conn.send(Error.STATUS_505)
+			self.client_conn.close()
+			return
 
 		if req.host in BLACKLISTED:
 			self.client_conn.send(StaticResponse.block_response)
